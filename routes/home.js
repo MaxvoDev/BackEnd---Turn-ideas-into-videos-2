@@ -132,16 +132,58 @@ const fetchVideoDetails = (publicIds) => {
     });
 };
 
-const taskStatusStore = {};
+const { Readable } = require('stream');
 
-router.get('/check-video-status', async (req, res) => {
-    const task = taskStatusStore[112];
+function bufferToStream(buffer) {
+  const stream = new Readable();
+  stream.push(buffer); // Push your data onto the stream
+  stream.push(null); // Signifies the end of the stream (EOF)
+  return stream;
+}
 
-    if (!task) {
-        return res.status(404).json({ error: 'Task not found' });
+async function updateTaskStatusOnCloudinary(taskID, videoData) {
+    // Prepare the status content
+    const statusContent = videoData;
+    const buffer = Buffer.from(statusContent);
+    const stream = bufferToStream(buffer);
+    // Upload the file to Cloudinary
+    try {
+        const uploadStream = cloudinary.uploader.upload_stream({
+            public_id: `task-${taskID}.txt`,
+            folder: "idea2video",
+            resource_type: 'raw', // Specify 'raw' for non-image files
+            overwrite: true
+        });
+        stream.pipe(uploadStream);
+
+        console.log(`Task status updated: ${taskID} - ${status}`);
+    } catch (error) {
+        console.error('Failed to update task status on Cloudinary', error);
     }
 
-    res.json(task);
+}
+
+const taskStatusStore = {};
+
+function getTaskStatusUrl(taskID) {
+    return cloudinary.url(`idea2video/task-${taskID}.txt`, {
+        resource_type: 'raw',
+        secure: true // Use HTTPS
+    });
+}
+
+router.get('/check-video-status', async (req, res) => {
+    try{
+        const task = getTaskStatusUrl(112);
+        const resp = await request.get(task);
+        res.json({
+            status: "complete",
+            data: resp
+        });
+    }
+    catch(e){
+        res.json({status: "processing"});
+    }
 })
 
 async function ProcessVideoInBackground(videoLength, taskID) {
@@ -177,12 +219,10 @@ async function ProcessVideoInBackground(videoLength, taskID) {
             const videoData = fs.readFileSync(`/tmp/final.mp4`);
             const videoBase64 = videoData.toString('base64');
             await uploadToCloudinary('final.mp4', videoData, 'video/mp4', false);
+            await updateTaskStatusOnCloudinary(taskID, videoBase64);
+
             console.log('Video merging finished.');
 
-            taskStatusStore[taskID] = {
-                status: 'complete',
-                data: videoBase64
-            }
         })
         .on('error', (err) => {
             console.error('Error:', err);
@@ -197,7 +237,7 @@ router.post('/merge-video', async (req, res) => {
     taskStatusStore[112] = { status: 'processing' };
     const videoLength = req.body.videoLen;
     ProcessVideoInBackground(videoLength, 112)
-    res.json({ 
+    res.json({
         success: true,
         taskID: 112
     });
