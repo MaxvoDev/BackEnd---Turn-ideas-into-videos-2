@@ -82,14 +82,15 @@ const generateSingleVideo = function (tag, audioData, imageData) {
 }
 
 router.get('/final-video', async(req, res) => {
-    const stat = fs.statSync(finalVideoPath);
+    let filePath = path.join(tempPath, `${req.query.filename}.mp4`);
+    const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const head = {
       'Content-Length': fileSize,
       'Content-Type': 'video/mp4',
     };
     res.writeHead(200, head);
-    fs.createReadStream(finalVideoPath).pipe(res);
+    fs.createReadStream(filePath).pipe(res);
 })
 
 router.post('/merge-video', async (req, res) => {
