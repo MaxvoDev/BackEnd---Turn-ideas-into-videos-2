@@ -270,6 +270,11 @@ const path = require('path');
 router.get('/test', async (req, res) => {
     const { url } = await put('articles/blob.txt', 'Hello World!', { access: 'public' });
 
+    res.json({
+        url,
+        status: "success"
+    });
+
 });
 
 module.exports = router;
