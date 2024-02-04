@@ -264,9 +264,11 @@ router.post('/script-to-video', async (req, res) => {
         })
 })
 
+const path = require('path');
+
 router.get('/test', async (req, res) => {
     const fileBuffer = Buffer.from('Hello World');
-    const imagePath = join('/tmp', `1.txt`);
+    const imagePath = path.join('/tmp', '1.txt');
     await fs.writeFile(imagePath, Buffer.from(fileBuffer));
 
 });

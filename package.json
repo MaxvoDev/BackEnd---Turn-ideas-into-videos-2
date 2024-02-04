@@ -23,6 +23,7 @@
     "http": "^0.0.1-security",
     "nodemon": "^3.0.1",
     "openai": "^4.26.0",
+    "path": "^0.12.7",
     "request": "^2.88.2",
     "request-promise": "^4.2.6",
     "unsplash-js": "^7.0.19"
