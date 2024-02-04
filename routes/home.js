@@ -7,6 +7,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const { OpenAI } = require('openai');
 const http = require('http');
 const { createApi } = require('unsplash-js');
+const { put } = require("@vercel/blob");
 
 const unsplash = createApi({ accessKey: '80zvD8BgnZK7mussaC5qBFj9XGibs16W_PxRnTuhjcE' });
 
@@ -267,9 +268,7 @@ router.post('/script-to-video', async (req, res) => {
 const path = require('path');
 
 router.get('/test', async (req, res) => {
-    const fileBuffer = Buffer.from('Hello World');
-    const imagePath = path.join('/tmp', '1.txt');
-    await fs.writeFile(imagePath, Buffer.from(fileBuffer));
+    const { url } = await put('articles/blob.txt', 'Hello World!', { access: 'public' });
 
 });
 
