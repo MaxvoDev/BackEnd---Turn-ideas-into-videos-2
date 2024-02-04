@@ -132,16 +132,19 @@ const fetchVideoDetails = (publicIds) => {
     });
 };
 
-// router.get('/check-video-status', async (req, res) => {
-//     const videoData = fs.readFileSync(`/tmp/temp${videoTag}.mp4`);
-//     const videoBase64 = videoData.toString('base64');
-//     res.json({ success: true, data: videoBase64 });
-// }
+const taskStatusStore = {};
 
-router.post('/merge-video', async (req, res) => {
-    // let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
-    const videoLength = req.body.videoLen;
+router.get('/check-video-status', async (req, res) => {
+    const task = taskStatusStore[112];
 
+    if (!task) {
+        return res.status(404).json({ error: 'Task not found' });
+    }
+
+    res.json(task);
+})
+
+async function ProcessVideoInBackground(videoLength, taskID) {
     // Create a new FFmpeg command
     const command = ffmpeg();
     const filterVideoFiles = [];
@@ -149,14 +152,7 @@ router.post('/merge-video', async (req, res) => {
     for (let i = 0; i < videoLength; i++) {
         filterVideoFiles.push(`temp${i}.mp4`);
     }
-    // const videoUrls = await fetchVideoDetails(filterVideoFiles);
-
-    const videoUrls = [
-        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
-        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
-        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
-        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
-    ]
+    const videoUrls = await fetchVideoDetails(filterVideoFiles);
 
     for (let i = 0; i < videoUrls.length; i++) {
         inputFiles.push(videoUrls[i]);
@@ -180,9 +176,13 @@ router.post('/merge-video', async (req, res) => {
         .on('end', async () => {
             const videoData = fs.readFileSync(`/tmp/final.mp4`);
             const videoBase64 = videoData.toString('base64');
-            // await uploadToCloudinary('final.mp4', videoData, 'video/mp4', false);
+            await uploadToCloudinary('final.mp4', videoData, 'video/mp4', false);
             console.log('Video merging finished.');
-            res.json({ success: true, data: videoBase64 });
+
+            taskStatusStore[taskID] = {
+                status: 'complete',
+                data: videoBase64
+            }
         })
         .on('error', (err) => {
             console.error('Error:', err);
@@ -190,7 +190,17 @@ router.post('/merge-video', async (req, res) => {
 
     // Run the FFmpeg command to merge the videos
     command.run();
+}
 
+router.post('/merge-video', async (req, res) => {
+    // let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
+    taskStatusStore[112] = { status: 'processing' };
+    const videoLength = req.body.videoLen;
+    ProcessVideoInBackground(videoLength, 112)
+    res.json({ 
+        success: true,
+        taskID: 112
+    });
 })
 
 router.post('/generate-video', async (req, res) => {
