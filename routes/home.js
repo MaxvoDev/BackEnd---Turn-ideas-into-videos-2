@@ -35,9 +35,9 @@ const payload = {
 
 const generateSingleVideo = function (tag, audioData, imageData) {
     return new Promise(async (resolve, reject) => {
-        let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
-        let imageFile = path.join(tempPath, `image${tag}.png`);
-        let audioFile = path.join(tempPath, `audio${tag}.mp3`);
+        let outputFilePath = path.join('/tmp/', `test${tag}.mp4`);
+        let imageFile = path.join('/tmp/', `image${tag}.png`);
+        let audioFile = path.join('/tmp/', `audio${tag}.mp3`);
 
         fs.writeFileSync(audioFile, audioData);
         fs.writeFileSync(imageFile, imageData);
@@ -93,6 +93,7 @@ router.get('/final-video', async(req, res) => {
 })
 
 router.post('/merge-video', async (req, res) => {
+    // let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
     const videoLength = req.body.videoLen;
 
     // Create a new FFmpeg command
@@ -100,7 +101,7 @@ router.post('/merge-video', async (req, res) => {
 
     const inputFiles = [];
     for (let i = 0; i < videoLength; i++) {
-        let inputFile = path.join(tempPath, `temp${i}.mp4`);
+        let inputFile = path.join('/tmp/', `test${i}.mp4`);
         inputFiles.push(inputFile);
         command.input(inputFile);
     }
