@@ -223,8 +223,6 @@ router.post('/script-to-video', async (req, res) => {
         })
 })
 
-const path = require('path');
-
 router.get('/test', async (req, res) => {
     const tag = 0;
     let outputFilePath = `${tempPath}temp${tag}.mp4`;
