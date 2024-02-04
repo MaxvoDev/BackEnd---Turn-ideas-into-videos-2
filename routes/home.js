@@ -268,8 +268,7 @@ router.post('/script-to-video', async (req, res) => {
 const path = require('path');
 
 router.get('/test', async (req, res) => {
-    const { url } = await put('articles/blob.txt', 'Hello World!', { access: 'public' });
-
+    res.json({ success: true });
 });
 
 module.exports = router;
