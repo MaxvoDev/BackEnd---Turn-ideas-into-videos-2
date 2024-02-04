@@ -7,7 +7,9 @@ const ffmpeg = require('fluent-ffmpeg');
 const { OpenAI } = require('openai');
 const http = require('http');
 const { createApi } = require('unsplash-js');
-const { put } = require("@vercel/blob");
+const { put, list } = require("@vercel/blob");
+const stream = require('stream');
+
 
 const unsplash = createApi({ accessKey: '80zvD8BgnZK7mussaC5qBFj9XGibs16W_PxRnTuhjcE' });
 
@@ -28,20 +30,30 @@ const payload = {
     }
 };
 
+const writeFile = async function(fileName, fileData){
+    return await put(fileName, fileData, { access: 'public' });
+}
 
 const generateSingleVideo = function (tag, audioData, imageData) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         let outputFilePath = `${tempPath}temp${tag}.mp4`;
         const imageFile = `${tempPath}image${tag}.png`;
         const audioFile = `${tempPath}audio${tag}.mp3`;
 
-        fs.writeFileSync(audioFile, audioData);
-        fs.writeFileSync(imageFile, imageData);
+        // fs.writeFileSync(audioFile, audioData);
+        // fs.writeFileSync(imageFile, imageData);
+        const audioUrl = await put(audioFile, audioData, { access: 'public' });
+        const imageUrl = await put(imageFile, imageData, { access: 'public' })
 
         // Create a new FFmpeg command
         const command = ffmpeg();
-        command.input(imageFile);
-        command.input(audioFile);
+        command.input(imageUrl.downloadUrl);
+        command.inputFormat('image2');
+        command.input(audioUrl.downloadUrl);
+        command.inputFormat('mp3')
+
+        const passThrough = new stream.PassThrough();
+
         // Specify output options
         command
             .fps(30)
@@ -57,11 +69,13 @@ const generateSingleVideo = function (tag, audioData, imageData) {
                 '-crf 23',
                 '-tune stillimage',
             ])
-            .output(outputFilePath)
+            .output(passThrough)
+            .outputFormat('mp4');
 
         // Run the FFmpeg command
         command
-            .on('end', () => {
+            .on('end', async () => {
+                await put(outputFilePath, passThrough, { access: 'public' })
                 resolve(outputFilePath);
             })
             .on('error', (err) => {
@@ -268,12 +282,58 @@ router.post('/script-to-video', async (req, res) => {
 const path = require('path');
 
 router.get('/test', async (req, res) => {
-    const { url } = await put('articles/blob.txt', 'Hello World!', { access: 'public' });
+    const tag = 0;
+    let outputFilePath = `${tempPath}temp${tag}.mp4`;
+    const imageFile = `${tempPath}image${tag}.png`;
+    const audioFile = `${tempPath}audio${tag}.mp3`;
 
-    res.json({
-        url,
-        status: "success"
-    });
+    // fs.writeFileSync(audioFile, audioData);
+    // fs.writeFileSync(imageFile, imageData);
+    const audioUrl = 'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707031930/wyj93c0a8hzl5xf71nfr.mp3';
+    const imageUrl = 'https://res.cloudinary.com/dkx4jbkdu/image/upload/v1707031932/f5ddgdumltflklydid93.jpg';
+
+    // Create a new FFmpeg command
+    const command = ffmpeg();
+    command.input(imageUrl);
+    command.inputFormat('image2');
+    command.input(audioUrl);
+    command.inputFormat('mp3')
+
+    const tempOutputPath = path.join('/tmp/', 'tempOutput.mp4'); // Temporary file
+
+    const passThrough = new stream.PassThrough();
+
+    // Specify output options
+    command
+        .fps(30)
+        .addOptions([
+            '-pix_fmt yuv420p',
+            // '-vf scale=1920:1080,setsar=1',
+            '-vf scale=1024:1024,setsar=1',
+            '-c:v libx264',
+            '-c:a aac',
+            '-strict experimental',
+            '-ar 44100',
+            '-r 30',
+            '-crf 23',
+            '-tune stillimage',
+        ])
+        .output(tempOutputPath)
+
+    // Run the FFmpeg command
+    command
+        .on('end', async () => {
+            console.log('Done');
+            res.json({ success: true });
+        })
+        .on('error', (err) => {
+            console.error('Error:', err);
+        })
+        .on('progress', (progress) => {
+            // You can also listen for progress events to get information on the compilation progress
+            console.log('Processing: ' + progress.percent + '% done');
+        })
+        .run();
 
 });
 
