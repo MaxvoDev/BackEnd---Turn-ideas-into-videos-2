@@ -240,7 +240,7 @@ router.get('/test', async (req, res) => {
     command.input(audioUrl);
     command.inputFormat('mp3')
 
-    const tempOutputPath = path.join('/tmp/', 'test.mp4'); // Temporary file
+    const tempOutputPath = path.join('/tmp/', 'test0.mp4'); // Temporary file
 
     const passThrough = new stream.PassThrough();
 
