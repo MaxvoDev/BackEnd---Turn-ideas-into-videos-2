@@ -27,12 +27,12 @@ const payload = {
     audioFormat: "mp3",
     paragraphChunks: ["Script HERE"],
     voiceParams: {
-        "name":"PVL:3371c48a-a894-47f3-8100-b3028f1fcf4b","engine":"speechify",
-        "languageCode":"en-US"
+        "name": "PVL:3371c48a-a894-47f3-8100-b3028f1fcf4b", "engine": "speechify",
+        "languageCode": "en-US"
     }
 };
 
-const writeFile = async function(fileName, fileData){
+const writeFile = async function (fileName, fileData) {
     return await put(fileName, fileData, { access: 'public' });
 }
 
@@ -149,14 +149,14 @@ const scriptToVideo = function (videoData) {
 
 }
 
-router.post('/merge-video', async(req, res) => {
+router.post('/merge-video', async (req, res) => {
     const videoLength = req.body.videoLen;
 
     // Create a new FFmpeg command
     const command = ffmpeg();
 
     const inputFiles = [];
-    for(let i=0; i<videoLength; i++){
+    for (let i = 0; i < videoLength; i++) {
         let inputFile = `${tempPath}temp${i}.mp4`;
         inputFiles.push(inputFile);
         command.input(inputFile);
@@ -190,7 +190,7 @@ router.post('/merge-video', async(req, res) => {
 
 })
 
-router.post('/generate-video', async(req, res) => {
+router.post('/generate-video', async (req, res) => {
     const videoData = req.body.videoData;
     const videoTag = videoData.tag;
     const getPhoto = unsplash.search.getPhotos({
@@ -198,24 +198,24 @@ router.post('/generate-video', async(req, res) => {
         page: 1,
         perPage: 1
     })
-    .then(resp => {
-        return request.get({url: resp.response.results[0].urls.full, encoding: null});
-    })
+        .then(resp => {
+            return request.get({ url: resp.response.results[0].urls.full, encoding: null });
+        })
 
     const audioScript = videoData.script;
     payload.paragraphChunks = [audioScript];
     let getAudio = request.post(API_ENDPOINT, { json: payload });
 
     Promise.all([getPhoto, getAudio])
-    .then(async (resp) => {
-        const imageData = resp[0];
-        const audioData = Buffer.from(resp[1].audioStream, 'base64');
-        await generateSingleVideo(videoTag, audioData, imageData)
-        
-        res.json({
-            status: "success",
+        .then(async (resp) => {
+            const imageData = resp[0];
+            const audioData = Buffer.from(resp[1].audioStream, 'base64');
+            await generateSingleVideo(videoTag, audioData, imageData)
+
+            res.json({
+                status: "success",
+            })
         })
-    })
 })
 
 router.get('/generate-script', async (req, res) => {
@@ -326,7 +326,15 @@ router.get('/test', async (req, res) => {
     command
         .on('end', async () => {
             console.log('Done');
-            res.json({ success: true });
+
+            fs.stat(tempOutputPath, (err, stat) => {
+                const head = {
+                    'Content-Length': stat.size,
+                    'Content-Type': 'video/mp4',
+                };
+                res.writeHead(200, head);
+                fs.createReadStream(tempOutputPath).pipe(res);
+            });
         })
         .on('error', (err) => {
             console.error('Error:', err);
