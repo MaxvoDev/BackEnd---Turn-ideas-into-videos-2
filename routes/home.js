@@ -36,11 +36,8 @@ const payload = {
 const generateSingleVideo = function (tag, audioData, imageData) {
     return new Promise(async (resolve, reject) => {
         let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
-        let imageFile = path.join(tempPath, `image${tag}.mp4`);
-        let audioFile = path.join(tempPath, `audio${tag}.mp4`);
-        // let outputFilePath = `${tempPath}temp${tag}.mp4`;
-        // const imageFile = `${tempPath}image${tag}.png`;
-        // const audioFile = `${tempPath}audio${tag}.mp3`;
+        let imageFile = path.join(tempPath, `image${tag}.png`);
+        let audioFile = path.join(tempPath, `audio${tag}.mp3`);
 
         fs.writeFileSync(audioFile, audioData);
         fs.writeFileSync(imageFile, imageData);
@@ -82,64 +79,6 @@ const generateSingleVideo = function (tag, audioData, imageData) {
             })
             .run();
     })
-}
-
-const scriptToVideo = function (videoData) {
-    return new Promise((resolve, reject) => {
-        try {
-
-            let promises = [];
-            for (var i = 0; i < videoData.length; i++) {
-                let audioBuffer = Buffer.from(videoData[i].audioData, 'base64');
-                let ImageBuffer = Buffer.from(videoData[i].imageData, 'base64');
-                let promise = generateSingleVideo(i, audioBuffer, ImageBuffer);
-                promises.push(promise);
-            }
-
-            Promise.all(promises)
-                .then(resp => {
-                    let inputFiles = [...resp];
-
-                    // Create a new FFmpeg command
-                    const command = ffmpeg();
-
-                    // Add input arguments for each video file
-                    inputFiles.forEach((inputFile) => {
-                        command.input(inputFile);
-                    });
-
-                    // Specify output options for the merged video
-                    command
-                        .addOptions([
-                            '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
-                            '-map', '[outv]',
-                            '-map', '[outa]',
-                            '-c:v libx264',
-                            '-c:a aac',
-                            '-strict experimental',
-                            '-ar 44100',
-                            '-r 30',
-                            '-crf 23',
-                        ])
-                        .output(finalVideoPath)
-                        .on('end', () => {
-                            console.log('Video merging finished.');
-                            resolve(true);
-                        })
-                        .on('error', (err) => {
-                            console.error('Error:', err);
-                            resolve(false);
-                        });
-
-                    // Run the FFmpeg command to merge the videos
-                    command.run();
-                })
-        }
-        catch (error) {
-            resolve(false);
-        }
-    })
-
 }
 
 router.get('/final-video', async(req, res) => {
