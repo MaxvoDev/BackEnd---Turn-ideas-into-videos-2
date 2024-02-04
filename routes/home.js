@@ -12,9 +12,11 @@ const { createApi } = require('unsplash-js');
 const { put, list } = require("@vercel/blob");
 const stream = require('stream');
 const path = require('path');
+const cloudinary = require('cloudinary').v2;
 
+cloudinary.config(JSON.parse(process.env.CLOUDINARY_CONFIG));
 
-const unsplash = createApi({ accessKey: 'axgDaWdQxno1ImdajxDnpJAp-QYGkoVOGuwJyOH1SuU' });
+const unsplash = createApi({ accessKey: process.env.UNSPLASH_ACCESS_KEY });
 
 
 const tempPath = '/tmp/';
@@ -33,19 +35,47 @@ const payload = {
     }
 };
 
+const uploadToCloudinary = async (filePath, fileBuffer, fileType, isImage = true) => {
+    return new Promise((resolve, reject) => {
+        const base64Data = fileBuffer.toString('base64');
+        const dataURI = `data:${fileType};base64,${base64Data}`;
+        const uploadConfig = {
+            resource_type: 'image',
+            public_id: filePath,
+            folder: "idea2video",
+            overwrite: true,
+        };
+
+        if (!isImage)
+            uploadConfig.resource_type = 'video';
+
+        cloudinary.uploader.upload(
+            dataURI,
+            uploadConfig,
+            function (error, result) {
+                if (error)
+                    console.error('Upload Error:', error);
+                else
+                    resolve(result.url);
+            }
+        );
+    })
+}
 const generateSingleVideo = function (tag, audioData, imageData) {
     return new Promise(async (resolve, reject) => {
-        let outputFilePath = path.join('/tmp/', `test${tag}.mp4`);
-        let imageFile = path.join('/tmp/', `image${tag}.png`);
-        let audioFile = path.join('/tmp/', `audio${tag}.mp3`);
-
-        fs.writeFileSync(audioFile, audioData);
-        fs.writeFileSync(imageFile, imageData);
-
+        let outputFilePath = `temp${tag}.mp4`;
+        let imageFile = `image${tag}.png`;
+        let audioFile = `audio${tag}.mp3`;
+        // fs.writeFileSync(audioFile, audioData);
+        // fs.writeFileSync(imageFile, imageData);
+        const imageUrl = await uploadToCloudinary(imageFile, imageData, 'image/png');
+        const audioUrl = await uploadToCloudinary(audioFile, audioData, 'audio/mp3', false);
         // Create a new FFmpeg command
         const command = ffmpeg();
-        command.input(imageFile);
-        command.input(audioFile);
+        command.input(imageUrl);
+        command.inputFormat('image2');
+        command.input(audioUrl);
+        command.inputFormat('mp3')
 
 
         // Specify output options
@@ -63,11 +93,15 @@ const generateSingleVideo = function (tag, audioData, imageData) {
                 '-crf 23',
                 '-tune stillimage',
             ])
-            .output(outputFilePath);
+            .output(`/tmp/${outputFilePath}`)
+            .outputFormat('mp4');
 
         // Run the FFmpeg command
         command
             .on('end', async () => {
+
+                const videoData = fs.readFileSync(`/tmp/${outputFilePath}`);
+                await uploadToCloudinary(outputFilePath, videoData, 'video/mp4', false);
                 resolve(true);
             })
             .on('error', (err) => {
@@ -81,17 +115,42 @@ const generateSingleVideo = function (tag, audioData, imageData) {
     })
 }
 
-router.get('/final-video', async(req, res) => {
+router.get('/final-video', async (req, res) => {
     let filePath = path.join(tempPath, `${req.query.filename}.mp4`);
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const head = {
-      'Content-Length': fileSize,
-      'Content-Type': 'video/mp4',
+        'Content-Length': fileSize,
+        'Content-Type': 'video/mp4',
     };
     res.writeHead(200, head);
     fs.createReadStream(filePath).pipe(res);
 })
+
+const fetchVideoDetails = (publicIds) => {
+    return new Promise((resolve, reject) => {
+        cloudinary.api.resources({
+            resource_type: 'video',
+            type: 'upload',
+            max_results: 30,
+            prefix: 'idea2video/' // Make sure this matches the path to your videos
+        }, (error, result) => {
+            if (error) {
+                console.error('Error listing videos:', error);
+                reject(error);
+            } else {
+                // Filter for specific files based on the list of publicIds
+                const specificFiles = result.resources.filter(resource =>
+                    publicIds.some(publicId => resource.public_id.endsWith(`idea2video/${publicId}`))
+                );
+
+                // Extract URLs of the specific files
+                const urls = specificFiles.map(file => file.secure_url); // or use file.url for non-SSL
+                resolve(urls);
+            }
+        });
+    });
+};
 
 router.post('/merge-video', async (req, res) => {
     // let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
@@ -99,12 +158,16 @@ router.post('/merge-video', async (req, res) => {
 
     // Create a new FFmpeg command
     const command = ffmpeg();
-
+    const filterVideoFiles = [];
     const inputFiles = [];
     for (let i = 0; i < videoLength; i++) {
-        let inputFile = path.join('/tmp/', `test${i}.mp4`);
-        inputFiles.push(inputFile);
-        command.input(inputFile);
+        filterVideoFiles.push(`temp${i}.mp4`);
+    }
+    const videoUrls = await fetchVideoDetails(filterVideoFiles);
+
+    for (let i = 0; i < videoUrls.length; i++) {
+        inputFiles.push(videoUrls[i]);
+        command.input(videoUrls[i]);
     }
 
     // Specify output options for the merged video
@@ -121,7 +184,9 @@ router.post('/merge-video', async (req, res) => {
             '-crf 23',
         ])
         .output(finalVideoPath)
-        .on('end', () => {
+        .on('end', async () => {
+            const videoData = fs.readFileSync(`/tmp/final.mp4`);
+            await uploadToCloudinary('final.mp4', videoData, 'video/mp4', false);
             console.log('Video merging finished.');
             res.json({ success: true });
         })
