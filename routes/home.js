@@ -132,6 +132,12 @@ const fetchVideoDetails = (publicIds) => {
     });
 };
 
+// router.get('/check-video-status', async (req, res) => {
+//     const videoData = fs.readFileSync(`/tmp/temp${videoTag}.mp4`);
+//     const videoBase64 = videoData.toString('base64');
+//     res.json({ success: true, data: videoBase64 });
+// }
+
 router.post('/merge-video', async (req, res) => {
     // let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
     const videoLength = req.body.videoLen;
@@ -143,7 +149,14 @@ router.post('/merge-video', async (req, res) => {
     for (let i = 0; i < videoLength; i++) {
         filterVideoFiles.push(`temp${i}.mp4`);
     }
-    const videoUrls = await fetchVideoDetails(filterVideoFiles);
+    // const videoUrls = await fetchVideoDetails(filterVideoFiles);
+
+    const videoUrls = [
+        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
+        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
+        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
+        'https://res.cloudinary.com/dkx4jbkdu/video/upload/v1707049119/idea2video/temp2.mp4.mp4',
+    ]
 
     for (let i = 0; i < videoUrls.length; i++) {
         inputFiles.push(videoUrls[i]);
