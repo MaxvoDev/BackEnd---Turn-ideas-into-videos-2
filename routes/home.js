@@ -6,14 +6,11 @@ const express = require("express");
 const router = express.Router();
 const request = require('request-promise');
 const fs = require('fs');
-const ffmpegPath = path.join(__dirname, '..', 'ffmpeg'); 
+const ffmpegPath = path.join(__dirname, '..', 'ffmpeg');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegPath);
 const { OpenAI } = require('openai');
 const { createApi } = require('unsplash-js');
-const cloudinary = require('cloudinary').v2;
-
-cloudinary.config(JSON.parse(process.env.CLOUDINARY_CONFIG));
 
 const unsplash = createApi({ accessKey: process.env.UNSPLASH_ACCESS_KEY });
 
@@ -29,6 +26,7 @@ const payload = {
     paragraphChunks: ["Script HERE"],
     voiceParams: JSON.parse(process.env.SPEECHIFY_VOICE_PARAMS)
 };
+
 
 const generateSingleVideo = function (tag, audioData, imageData) {
     return new Promise(async (resolve, reject) => {
@@ -125,46 +123,50 @@ const generateSingleVideo = function (tag, audioData, imageData) {
 //     command.run();
 // })
 
-function mergeVideo(videoLength) {
-    // Create a new FFmpeg command
-    return new Promise(async (resolve, reject) => {
-        const command = ffmpeg();
-        const inputFiles = [];
-        for (let i = 0; i < videoLength; i++) {
-            inputFiles.push(`/tmp/temp${i}.mp4`);
-            command.input(`/tmp/temp${i}.mp4`);
-        }
+router.post('/merge-video', async (req, res) => {
+    const videoLength = req.body.videoLength;
+    const command = ffmpeg();
+    const inputFiles = [];
+    for (let i = 0; i < videoLength; i++) {
+        inputFiles.push(`/tmp/temp${i}.mp4`);
+        command.input(`/tmp/temp${i}.mp4`);
+    }
 
-        // Specify output options for the merged video
-        command
-            .addOptions([
-                '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
-                '-map', '[outv]',
-                '-map', '[outa]',
-                '-c:v libx264',
-                '-c:a aac',
-                '-strict experimental',
-                '-ar 44100',
-                '-r 30',
-                '-crf 23',
-            ])
-            .output(finalVideoPath)
-            .on('end', async () => {
-                const videoData = fs.readFileSync(finalVideoPath);
-                const videoBase64 = videoData.toString('base64');
+    // Specify output options for the merged video
+    command
+        .addOptions([
+            '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
+            '-map', '[outv]',
+            '-map', '[outa]',
+            '-c:v libx264',
+            '-c:a aac',
+            '-strict experimental',
+            '-ar 44100',
+            '-r 30',
+            '-crf 23',
+        ])
+        .output(finalVideoPath)
+        .on('end', async () => {
+            const videoData = fs.readFileSync(finalVideoPath);
+            const videoBase64 = videoData.toString('base64');
 
-                console.log('Video merging finished.');
-                resolve(videoBase64);
-            })
-            .on('error', (err) => {
-                console.error('Error:', err);
-                reject('');
+            console.log('Video merging finished.');
+            res.json({
+                status: 'success',
+                data: videoBase64
             });
+        })
+        .on('error', (err) => {
+            console.error('Error:', err);
+            res.json({
+                status: 'error',
+                data: ''
+            });
+        });
 
-        // Run the FFmpeg command to merge the videos
-        command.run();
-    });
-}
+    // Run the FFmpeg command to merge the videos
+    command.run();
+})
 
 router.post('/generate-video', async (req, res) => {
     const videoData = req.body.videoData;
@@ -194,11 +196,10 @@ router.post('/generate-video', async (req, res) => {
     }
 
     Promise.all(promises)
-        .then(resp => mergeVideo(videoData.length))
         .then(resp => {
             res.json({
                 status: "success",
-                data: resp
+                data: ''
             })
         })
         .catch(err => {
