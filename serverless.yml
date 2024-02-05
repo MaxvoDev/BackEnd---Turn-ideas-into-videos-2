@@ -1,0 +1,68 @@
+service: Idea2VideoApi
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  memorySize: 2048
+  stage: dev
+  timeout: 60
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - http: ANY /{proxy+}
+      - http: ANY /
+    environment:
+      OPENAI_API_KEY: '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'
+      SPEECHIFY_VOICE_PARAMS: '{"name":"PVL:3371c48a-a894-47f3-8100-b3028f1fcf4b","engine":"speechify","languageCode":"en-US"}'
+      PORT: 9001
+      BLOB_READ_WRITE_TOKEN: "vercel_blob_rw_JdHCaXFFDHOuji3h_NdbZIN4LJhLCTb3LI7ZJfVLo3Netrd"
+      UNSPLASH_ACCESS_KEY: 'xainmDm-ACcQmRtIh02PBUwLwBk_Knc4sGzbth4COJs'
+      CLOUDINARY_CONFIG: '{"cloud_name":"dkx4jbkdu","api_key":"921544868759241","api_secret":"qX_d4NoMEEpZ-0Kgm0wJoo98jPo"}'
+
+#      - websocket: $connect
+#      - s3: ${env:BUCKET}
+#      - schedule: rate(10 minutes)
+#      - sns: greeter-topic
+#      - stream: arn:aws:dynamodb:region:XXXXXX:table/foo/stream/1970-01-01T00:00:00.000
+#      - alexaSkill: amzn1.ask.skill.xx-xx-xx-xx
+#      - alexaSmartHome: amzn1.ask.skill.xx-xx-xx-xx
+#      - iot:
+#          sql: "SELECT * FROM 'some_topic'"
+#      - cloudwatchEvent:
+#          event:
+#            source:
+#              - "aws.ec2"
+#            detail-type:
+#              - "EC2 Instance State-change Notification"
+#            detail:
+#              state:
+#                - pending
+#      - cloudwatchLog: '/aws/lambda/hello'
+#      - cognitoUserPool:
+#          pool: MyUserPool
+#          trigger: PreSignUp
+#      - alb:
+#          listenerArn: arn:aws:elasticloadbalancing:us-east-1:XXXXXX:listener/app/my-load-balancer/50dc6c495c0c9188/
+#          priority: 1
+#          conditions:
+#            host: example.com
+#            path: /hello
+
+#    Define function environment variables here
+#    environment:
+#      variable2: value2
+
+# you can add CloudFormation resource templates here
+#resources:
+#  Resources:
+#    NewResource:
+#      Type: AWS::S3::Bucket
+#      Properties:
+#        BucketName: my-new-bucket
+#  Outputs:
+#     NewOutput:
+#       Description: "Description for the output"
+#       Value: "Some output value"

@@ -1,14 +1,16 @@
 require('dotenv').config();
+
+const path = require('path');
+
 const express = require("express");
 const router = express.Router();
 const request = require('request-promise');
 const fs = require('fs');
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+const ffmpegPath = path.join(__dirname, '..', 'ffmpeg'); 
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegPath);
 const { OpenAI } = require('openai');
 const { createApi } = require('unsplash-js');
-const path = require('path');
 const cloudinary = require('cloudinary').v2;
 
 cloudinary.config(JSON.parse(process.env.CLOUDINARY_CONFIG));
@@ -28,47 +30,18 @@ const payload = {
     voiceParams: JSON.parse(process.env.SPEECHIFY_VOICE_PARAMS)
 };
 
-const uploadToCloudinary = async (filePath, fileBuffer, fileType, isImage = true) => {
-    return new Promise((resolve, reject) => {
-        const base64Data = fileBuffer.toString('base64');
-        const dataURI = `data:${fileType};base64,${base64Data}`;
-        const uploadConfig = {
-            resource_type: 'image',
-            public_id: filePath,
-            folder: "idea2video",
-            overwrite: true,
-        };
-
-        if (!isImage)
-            uploadConfig.resource_type = 'video';
-
-        cloudinary.uploader.upload(
-            dataURI,
-            uploadConfig,
-            function (error, result) {
-                if (error)
-                    console.error('Upload Error:', error);
-                else
-                    resolve(result.url);
-            }
-        );
-    })
-}
 const generateSingleVideo = function (tag, audioData, imageData) {
     return new Promise(async (resolve, reject) => {
-        let outputFilePath = `temp${tag}.mp4`;
-        let imageFile = `image${tag}.png`;
-        let audioFile = `audio${tag}.mp3`;
+        let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
+        let imageFile = path.join(tempPath, `image${tag}.png`);
+        let audioFile = path.join(tempPath, `audio${tag}.mp3`);
 
-        const imageUrl = await uploadToCloudinary(imageFile, imageData, 'image/png');
-        const audioUrl = await uploadToCloudinary(audioFile, audioData, 'audio/mp3', false);
+        fs.writeFileSync(imageFile, imageData);
+        fs.writeFileSync(audioFile, audioData);
 
         const command = ffmpeg();
-        command.input(imageUrl);
-        command.inputFormat('image2');
-        command.input(audioUrl);
-        command.inputFormat('mp3')
-
+        command.input(imageFile);
+        command.input(audioFile);
 
         // Specify output options
         command
@@ -85,15 +58,11 @@ const generateSingleVideo = function (tag, audioData, imageData) {
                 '-crf 23',
                 '-tune stillimage',
             ])
-            .output(`/tmp/${outputFilePath}`)
-            .outputFormat('mp4');
+            .output(outputFilePath);
 
         // Run the FFmpeg command
         command
             .on('end', async () => {
-
-                const videoData = fs.readFileSync(`/tmp/${outputFilePath}`);
-                await uploadToCloudinary(outputFilePath, videoData, 'video/mp4', false);
                 resolve(true);
             })
             .on('error', (err) => {
@@ -107,166 +76,135 @@ const generateSingleVideo = function (tag, audioData, imageData) {
     })
 }
 
-const fetchVideoDetails = (publicIds) => {
-    return new Promise((resolve, reject) => {
-        cloudinary.api.resources({
-            resource_type: 'video',
-            type: 'upload',
-            max_results: 30,
-            prefix: 'idea2video/' // Make sure this matches the path to your videos
-        }, (error, result) => {
-            if (error) {
-                console.error('Error listing videos:', error);
-                reject(error);
-            } else {
-                // Filter for specific files based on the list of publicIds
-                const specificFiles = result.resources.filter(resource =>
-                    publicIds.some(publicId => resource.public_id.endsWith(`idea2video/${publicId}`))
-                );
+// router.post('/merge-video', async (req, res) => {
+//     const videoLength = req.body.videoLen;
+//     const videoUrls = req.body.videoUrls;
+//     // Create a new FFmpeg command
+//     const command = ffmpeg();
+//     const filterVideoFiles = [];
+//     const inputFiles = [];
+//     for (let i = 0; i < videoLength; i++) {
+//         filterVideoFiles.push(`temp${i}.mp4`);
+//     }
 
-                // Extract URLs of the specific files
-                const urls = specificFiles.map(file => file.secure_url); // or use file.url for non-SSL
-                resolve(urls);
-            }
-        });
-    });
-};
+//     for (let i = 0; i < videoUrls.length; i++) {
+//         inputFiles.push(videoUrls[i]);
+//         command.input(videoUrls[i]);
+//     }
 
-const { Readable } = require('stream');
+//     // Specify output options for the merged video
+//     command
+//         .addOptions([
+//             '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
+//             '-map', '[outv]',
+//             '-map', '[outa]',
+//             '-c:v libx264',
+//             '-c:a aac',
+//             '-strict experimental',
+//             '-ar 44100',
+//             '-r 30',
+//             '-crf 23',
+//         ])
+//         .output(finalVideoPath)
+//         .on('end', async () => {
+//             const videoData = fs.readFileSync(finalVideoPath);
+//             const videoBase64 = videoData.toString('base64');
 
-function bufferToStream(buffer) {
-  const stream = new Readable();
-  stream.push(buffer); // Push your data onto the stream
-  stream.push(null); // Signifies the end of the stream (EOF)
-  return stream;
-}
+//             console.log('Video merging finished.');
+//             res.json({
+//                 status: "success",
+//                 data: videoBase64
+//             })
 
-async function updateTaskStatusOnCloudinary(taskID, videoData) {
-    // Prepare the status content
-    const statusContent = videoData;
-    const buffer = Buffer.from(statusContent);
-    const stream = bufferToStream(buffer);
-    // Upload the file to Cloudinary
-    try {
-        const uploadStream = cloudinary.uploader.upload_stream({
-            public_id: `task-${taskID}.txt`,
-            folder: "idea2video",
-            resource_type: 'raw', // Specify 'raw' for non-image files
-            overwrite: true
-        });
-        stream.pipe(uploadStream);
+//         })
+//         .on('error', (err) => {
+//             console.error('Error:', err);
+//         });
 
-        console.log(`Task status updated: ${taskID} - ${status}`);
-    } catch (error) {
-        console.error('Failed to update task status on Cloudinary', error);
-    }
+//     // Run the FFmpeg command to merge the videos
+//     command.run();
+// })
 
-}
-
-const taskStatusStore = {};
-
-function getTaskStatusUrl(taskID) {
-    return cloudinary.url(`idea2video/task-${taskID}.txt`, {
-        resource_type: 'raw',
-        secure: true // Use HTTPS
-    });
-}
-
-router.get('/check-video-status', async (req, res) => {
-    try{
-        const task = getTaskStatusUrl(112);
-        const resp = await request.get(task);
-        res.json({
-            status: "complete",
-            data: resp
-        });
-    }
-    catch(e){
-        res.json({status: "processing"});
-    }
-})
-
-async function ProcessVideoInBackground(videoLength, taskID) {
+function mergeVideo(videoLength) {
     // Create a new FFmpeg command
-    const command = ffmpeg();
-    const filterVideoFiles = [];
-    const inputFiles = [];
-    for (let i = 0; i < videoLength; i++) {
-        filterVideoFiles.push(`temp${i}.mp4`);
-    }
-    const videoUrls = await fetchVideoDetails(filterVideoFiles);
+    return new Promise(async (resolve, reject) => {
+        const command = ffmpeg();
+        const inputFiles = [];
+        for (let i = 0; i < videoLength; i++) {
+            inputFiles.push(`/tmp/temp${i}.mp4`);
+            command.input(`/tmp/temp${i}.mp4`);
+        }
 
-    for (let i = 0; i < videoUrls.length; i++) {
-        inputFiles.push(videoUrls[i]);
-        command.input(videoUrls[i]);
-    }
+        // Specify output options for the merged video
+        command
+            .addOptions([
+                '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
+                '-map', '[outv]',
+                '-map', '[outa]',
+                '-c:v libx264',
+                '-c:a aac',
+                '-strict experimental',
+                '-ar 44100',
+                '-r 30',
+                '-crf 23',
+            ])
+            .output(finalVideoPath)
+            .on('end', async () => {
+                const videoData = fs.readFileSync(finalVideoPath);
+                const videoBase64 = videoData.toString('base64');
 
-    // Specify output options for the merged video
-    command
-        .addOptions([
-            '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
-            '-map', '[outv]',
-            '-map', '[outa]',
-            '-c:v libx264',
-            '-c:a aac',
-            '-strict experimental',
-            '-ar 44100',
-            '-r 30',
-            '-crf 23',
-        ])
-        .output(finalVideoPath)
-        .on('end', async () => {
-            const videoData = fs.readFileSync(`/tmp/final.mp4`);
-            const videoBase64 = videoData.toString('base64');
-            await uploadToCloudinary('final.mp4', videoData, 'video/mp4', false);
-            await updateTaskStatusOnCloudinary(taskID, videoBase64);
+                console.log('Video merging finished.');
+                resolve(videoBase64);
+            })
+            .on('error', (err) => {
+                console.error('Error:', err);
+                reject('');
+            });
 
-            console.log('Video merging finished.');
-
-        })
-        .on('error', (err) => {
-            console.error('Error:', err);
-        });
-
-    // Run the FFmpeg command to merge the videos
-    command.run();
-}
-
-router.post('/merge-video', async (req, res) => {
-    // let outputFilePath = path.join(tempPath, `temp${tag}.mp4`);
-    taskStatusStore[112] = { status: 'processing' };
-    const videoLength = req.body.videoLen;
-    ProcessVideoInBackground(videoLength, 112)
-    res.json({
-        success: true,
-        taskID: 112
+        // Run the FFmpeg command to merge the videos
+        command.run();
     });
-})
+}
 
 router.post('/generate-video', async (req, res) => {
     const videoData = req.body.videoData;
-    const videoTag = videoData.tag;
-    const getPhoto = unsplash.search.getPhotos({
-        query: videoData.imageDesc,
-        page: 1,
-        perPage: 1
-    })
-        .then(resp => {
-            return request.get({ url: `${resp.response.results[0].urls.raw}&w=1280&h=720&fit=crop`, encoding: null });
+    const promises = [];
+    for (let i = 0; i < videoData.length; i++) {
+        const videoTag = i;
+        const getPhoto = unsplash.search.getPhotos({
+            query: videoData[i].imageDesc,
+            page: 1,
+            perPage: 1
         })
+            .then(resp => {
+                return request.get({ url: `${resp.response.results[0].urls.raw}&w=1280&h=720&fit=crop`, encoding: null });
+            })
 
-    const audioScript = videoData.script;
-    payload.paragraphChunks = [audioScript];
-    let getAudio = request.post(API_ENDPOINT, { json: payload });
+        const audioScript = videoData[i].script;
+        payload.paragraphChunks = [audioScript];
+        let getAudio = request.post(API_ENDPOINT, { json: payload });
 
-    Promise.all([getPhoto, getAudio])
-        .then(async (resp) => {
-            const imageData = resp[0];
-            const audioData = Buffer.from(resp[1].audioStream, 'base64');
-            await generateSingleVideo(videoTag, audioData, imageData)
+        const videoPromise = Promise.all([getPhoto, getAudio])
+            .then((resp) => {
+                const imageData = resp[0];
+                const audioData = Buffer.from(resp[1].audioStream, 'base64');
+                return generateSingleVideo(videoTag, audioData, imageData)
+            })
+        promises.push(videoPromise);
+    }
 
+    Promise.all(promises)
+        .then(resp => mergeVideo(videoData.length))
+        .then(resp => {
             res.json({
                 status: "success",
+                data: resp
+            })
+        })
+        .catch(err => {
+            res.json({
+                status: "error",
+                data: ''
             })
         })
 })
