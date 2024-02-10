@@ -1,16 +1,13 @@
 require('dotenv').config();
 
 const path = require('path');
-
 const express = require("express");
 const router = express.Router();
 const request = require('request-promise');
 const fs = require('fs');
-const ffmpegPath = path.join(__dirname, '..', 'ffmpeg');
-const ffmpeg = require('fluent-ffmpeg');
-ffmpeg.setFfmpegPath(ffmpegPath);
 const { OpenAI } = require('openai');
 const { createApi } = require('unsplash-js');
+const ffmpeg = require('fluent-ffmpeg');
 
 const unsplash = createApi({ accessKey: process.env.UNSPLASH_ACCESS_KEY });
 
@@ -21,10 +18,12 @@ const openai = new OpenAI({
 });
 
 const API_ENDPOINT = 'https://audio.api.speechify.com/generateAudioFiles';
+
+const voiceList = JSON.parse(process.env.SPEECHIFY_VOICE_PARAMS);
 const payload = {
     audioFormat: "mp3",
     paragraphChunks: ["Script HERE"],
-    voiceParams: JSON.parse(process.env.SPEECHIFY_VOICE_PARAMS)
+    voiceParams: voiceList['mrbeast']
 };
 
 
@@ -74,102 +73,66 @@ const generateSingleVideo = function (tag, audioData, imageData) {
     })
 }
 
-// router.post('/merge-video', async (req, res) => {
-//     const videoLength = req.body.videoLen;
-//     const videoUrls = req.body.videoUrls;
-//     // Create a new FFmpeg command
-//     const command = ffmpeg();
-//     const filterVideoFiles = [];
-//     const inputFiles = [];
-//     for (let i = 0; i < videoLength; i++) {
-//         filterVideoFiles.push(`temp${i}.mp4`);
-//     }
+function mergeVideo(videoLength) {
+    return new Promise((resolve, reject) => {
+        const command = ffmpeg();
+        const inputFiles = [];
+        for (let i = 0; i < videoLength; i++) {
+            inputFiles.push(`/tmp/temp${i}.mp4`);
+            command.input(`/tmp/temp${i}.mp4`);
+        }
 
-//     for (let i = 0; i < videoUrls.length; i++) {
-//         inputFiles.push(videoUrls[i]);
-//         command.input(videoUrls[i]);
-//     }
+        // Specify output options for the merged video
+        command
+            .addOptions([
+                '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
+                '-map', '[outv]',
+                '-map', '[outa]',
+                '-c:v libx264',
+                '-c:a aac',
+                '-strict experimental',
+                '-ar 44100',
+                '-r 30',
+                '-crf 23',
+            ])
+            .output(finalVideoPath)
+            .on('end', async () => {
+                const videoData = fs.readFileSync(finalVideoPath);
+                const videoBase64 = videoData.toString('base64');
 
-//     // Specify output options for the merged video
-//     command
-//         .addOptions([
-//             '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
-//             '-map', '[outv]',
-//             '-map', '[outa]',
-//             '-c:v libx264',
-//             '-c:a aac',
-//             '-strict experimental',
-//             '-ar 44100',
-//             '-r 30',
-//             '-crf 23',
-//         ])
-//         .output(finalVideoPath)
-//         .on('end', async () => {
-//             const videoData = fs.readFileSync(finalVideoPath);
-//             const videoBase64 = videoData.toString('base64');
+                console.log('Video merging finished.');
+                resolve(videoBase64);
+            })
+            .on('error', (err) => {
+                console.error('Error:', err);
+                reject(err);
+            });
 
-//             console.log('Video merging finished.');
-//             res.json({
-//                 status: "success",
-//                 data: videoBase64
-//             })
-
-//         })
-//         .on('error', (err) => {
-//             console.error('Error:', err);
-//         });
-
-//     // Run the FFmpeg command to merge the videos
-//     command.run();
-// })
-
+        // Run the FFmpeg command to merge the videos
+        command.run();
+    })
+}
 router.post('/merge-video', async (req, res) => {
     const videoLength = req.body.videoLength;
-    const command = ffmpeg();
-    const inputFiles = [];
-    for (let i = 0; i < videoLength; i++) {
-        inputFiles.push(`/tmp/temp${i}.mp4`);
-        command.input(`/tmp/temp${i}.mp4`);
-    }
-
-    // Specify output options for the merged video
-    command
-        .addOptions([
-            '-filter_complex', `concat=n=${inputFiles.length}:v=1:a=1[outv][outa]`,
-            '-map', '[outv]',
-            '-map', '[outa]',
-            '-c:v libx264',
-            '-c:a aac',
-            '-strict experimental',
-            '-ar 44100',
-            '-r 30',
-            '-crf 23',
-        ])
-        .output(finalVideoPath)
-        .on('end', async () => {
-            const videoData = fs.readFileSync(finalVideoPath);
-            const videoBase64 = videoData.toString('base64');
-
-            console.log('Video merging finished.');
+    mergeVideo(videoLength)
+        .then(resp => {
             res.json({
-                status: 'success',
-                data: videoBase64
-            });
+                status: "success",
+                data: resp
+            })
         })
-        .on('error', (err) => {
-            console.error('Error:', err);
+        .catch(err => {
             res.json({
-                status: 'error',
+                status: "error",
                 data: ''
-            });
+            })
         });
-
-    // Run the FFmpeg command to merge the videos
-    command.run();
 })
 
 router.post('/generate-video', async (req, res) => {
     const videoData = req.body.videoData;
+    const voiceService = req.body.videoSettings.voiceService;
+
     const promises = [];
     for (let i = 0; i < videoData.length; i++) {
         const videoTag = i;
@@ -184,6 +147,7 @@ router.post('/generate-video', async (req, res) => {
 
         const audioScript = videoData[i].script;
         payload.paragraphChunks = [audioScript];
+        payload.voiceParams = voiceList[voiceService];
         let getAudio = request.post(API_ENDPOINT, { json: payload });
 
         const videoPromise = Promise.all([getPhoto, getAudio])
@@ -211,6 +175,7 @@ router.post('/generate-video', async (req, res) => {
 })
 
 router.get('/generate-script', async (req, res) => {
+    const videoLength = req.query.videoLength;
     const idea = req.query.idea;
 
     const response = await openai.chat.completions.create({
@@ -218,7 +183,7 @@ router.get('/generate-script', async (req, res) => {
         messages: [
             {
                 "role": "user",
-                "content": `GENERATE FOR ME A VIRAL VIDEO SCRIPT TO TALK FOR A VIDEO LESS THAN 20 SECONDS. Each script should be short and can read in less than 10 seconds.
+                "content": `GENERATE FOR ME A VIRAL VIDEO SCRIPT TO TALK FOR A VIDEO LESS THAN ${videoLength} SECONDS. Each script should be short and can read in less than 15 seconds.
 
         Make sure the script is meaningful and it will be like a good story
         
